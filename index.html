@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>파렛트 순번 투입 체크</title>
+  <!-- QR 스캐너 라이브러리 (html5-qrcode) -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", sans-serif;
+    }
+    body {
+      background-color: #121826;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    header {
+      background-color: #1f2937;
+      padding: 16px;
+      text-align: center;
+      font-size: 1.25rem;
+      font-weight: 800;
+      border-bottom: 2px solid #374151;
+      flex-shrink: 0;
+    }
+    .screen {
+      display: none;
+      flex: 1;
+      padding: 16px;
+      overflow-y: auto;
+      flex-direction: column;
+    }
+    .screen.active {
+      display: flex;
+    }
+    .section-title {
+      font-size: 1.1rem;
+      color: #9ca3af;
+      margin-bottom: 14px;
+      text-align: center;
+      font-weight: 600;
+    }
+    /* 그리드 버튼 레이아웃 */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      flex: 1;
+      align-content: center;
+    }
+    .btn-card {
+      background-color: #2563eb;
+      color: #ffffff;
+      border: 2px solid #3b82f6;
+      border-radius: 14px;
+      padding: 26px 12px;
+      font-size: 1.5rem;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+      transition: transform 0.1s, background-color 0.15s;
+    }
+    .btn-card:active {
+      transform: scale(0.97);
+      background-color: #1d4ed8;
+    }
+    .btn-card.item-btn {
+      background-color: #1f2937;
+      border-color: #4b5563;
+      padding: 20px 10px;
+    }
+    .btn-card.item-btn.in-progress {
+      border-color: #10b981;
+      background-color: #064e3b;
+    }
+    .btn-card.item-btn.completed {
+      border-color: #f59e0b;
+      background-color: #78350f;
+    }
+    .badge-seq {
+      margin-top: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background-color: rgba(0, 0, 0, 0.35);
+      color: #d1d5db;
+    }
+    /* 스캔 화면 스타일 */
+    .target-box {
+      background-color: #1f2937;
+      border: 2px solid #374151;
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .target-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .target-line-item {
+      font-size: 1.2rem;
+      font-weight: 800;
+      color: #60a5fa;
+    }
+    .target-expected {
+      font-size: 0.95rem;
+      color: #d1d5db;
+    }
+    .target-expected strong {
+      color: #fbbf24;
+      font-size: 1.1rem;
+      letter-spacing: 1px;
+    }
+    .seq-counter {
+      text-align: right;
+    }
+    .seq-counter .num {
+      font-size: 1.8rem;
+      font-weight: 900;
+      color: #34d399;
+    }
+    .seq-counter .total {
+      font-size: 0.9rem;
+      color: #9ca3af;
+    }
+    #reader-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      margin: 0 auto 12px auto;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #000;
+      border: 3px solid #374151;
+      min-height: 230px;
+    }
+    #reader {
+      width: 100%;
+    }
+    /* 판정 알림창 */
+    .status-banner {
+      padding: 14px;
+      border-radius: 10px;
+      font-size: 1.15rem;
+      font-weight: 800;
+      text-align: center;
+      margin-bottom: 10px;
+      background-color: #374151;
+      color: #e5e7eb;
+    }
+    .status-banner.ok {
+      background-color: #059669;
+      color: #ffffff;
+      border: 2px solid #34d399;
+    }
+    .status-banner.ng {
+      background-color: #dc2626;
+      color: #ffffff;
+      border: 2px solid #f87171;
+      animation: shake 0.3s ease-in-out;
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-8px); }
+      75% { transform: translateX(8px); }
+    }
+    /* 최근 스캔 로그 */
+    .history-box {
+      flex: 1;
+      background-color: #1f2937;
+      border-radius: 10px;
+      padding: 10px 14px;
+      overflow-y: auto;
+      font-size: 0.9rem;
+      border: 1px solid #374151;
+    }
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #374151;
+      color: #d1d5db;
+    }
+    .history-item:last-child {
+      border-bottom: none;
+    }
+    /* 테스트 입력 바 (현장 테스트용) */
+    .sim-bar {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .sim-bar input {
+      flex: 1;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #4b5563;
+      background: #111827;
+      color: #fff;
+      font-size: 0.9rem;
+    }
+    .sim-bar button {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: none;
+      background: #4b5563;
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    /* 하단 고정 네비게이션 버튼 */
+    .bottom-nav {
+      display: flex;
+      gap: 12px;
+      padding: 12px 16px;
+      background-color: #1f2937;
+      border-top: 2px solid #374151;
+      flex-shrink: 0;
+    }
+    .nav-btn {
+      flex: 1;
+      padding: 16px;
+      font-size: 1.15rem;
+      font-weight: 800;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      color: #ffffff;
+    }
+    .nav-btn.home {
+      background-color: #4b5563;
+    }
+    .nav-btn.reset {
+      background-color: #e11d48;
+    }
+    .nav-btn:active {
+      opacity: 0.85;
+    }
+  </style>
+</head>
+<body>
+
+  <header id="app-header">파렛트 순번 투입 관리</header>
+
+  <!-- 1. 홈 화면 (라인 선택) -->
+  <div id="screen-home" class="screen active">
+    <div class="section-title">투입할 라인을 선택하세요</div>
+    <div class="grid-2" id="line-grid"></div>
+  </div>
+
+  <!-- 2. 품목 선택 화면 -->
+  <div id="screen-item" class="screen">
+    <div class="section-title" id="selected-line-label">라인 품목 선택</div>
+    <div class="grid-2" id="item-grid"></div>
+  </div>
+
+  <!-- 3. QR 스캔 화면 -->
+  <div id="screen-scan" class="screen">
+    <div class="target-box">
+      <div class="target-info">
+        <div class="target-line-item" id="scan-title">11라인 - F/C</div>
+        <div class="target-expected">대기 QR: <strong id="expected-qr">11FC0001</strong></div>
+      </div>
+      <div class="seq-counter">
+        <div class="num" id="current-seq-display">0001</div>
+        <div class="total">/ 0020</div>
+      </div>
+    </div>
+
+    <div id="reader-wrapper">
+      <div id="reader"></div>
+    </div>
+
+    <div id="status-banner" class="status-banner">
+      QR 코드를 스캔해 주세요
+    </div>
+
+    <div class="history-box" id="scan-log">
+      <div style="color:#6b7280; text-align:center;">스캔 이력이 표시됩니다.</div>
+    </div>
+
+    <!-- 카메라 없이도 동작을 확인할 수 있는 수동/테스트 입력창 -->
+    <div class="sim-bar">
+      <input type="text" id="manual-qr" placeholder="수동 입력 테스트 (예: 11FC0001)">
+      <button onclick="triggerManualScan()">스캔 테스트</button>
+    </div>
+  </div>
+
+  <!-- 하단 고정 버튼 (홈 화면 / 스캔완료) -->
+  <div class="bottom-nav">
+    <button class="nav-btn home" onclick="goHome()">홈 화면</button>
+    <button class="nav-btn reset" id="btn-complete" onclick="completeAndReset()" style="display:none;">스캔완료</button>
+  </div>
+
+  <script>
+    // 1. 기본 설정 데이터
+    const LINES = ["11라인", "12라인", "22라인", "23라인"];
+    const ITEMS = ["F/C", "F/B", "R/C", "R/B", "3/C", "3/B"];
+    const MAX_SEQ = 20;
+    const STORAGE_KEY = "PALLET_SCAN_STATE_V1";
+
+    let currentLine = null; // 예: "11라인"
+    let currentItem = null; // 예: "F/C"
+    let html5QrCode = null;
+    let isScanLocked = false; // 연속 중복 스캔 방지 락
+
+    // 2. 이력 불러오기 및 저장 (localStorage)
+    // 저장 구조: { "11_FC": { nextSeq: 1, logs: [] }, ... }
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function saveState(state) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function getRecordKey(line, item) {
+      const lineCode = line.replace("라인", "");
+      const itemCode = item.replace("/", "");
+      return `${lineCode}_${itemCode}`;
+    }
+
+    function getItemProgress(line, item) {
+      const state = loadState();
+      const key = getRecordKey(line, item);
+      if (!state[key]) {
+        return { nextSeq: 1, logs: [] };
+      }
+      return state[key];
+    }
+
+    function setItemProgress(line, item, nextSeq, logs) {
+      const state = loadState();
+      const key = getRecordKey(line, item);
+      state[key] = { nextSeq, logs };
+      saveState(state);
+    }
+
+    // 숫자 4자리 포맷 (1 -> "0001")
+    function pad4(num) {
+      return String(num).padStart(4, "0");
+    }
+
+    // 예상 QR 코드 생성 ("11라인", "F/C", 1 -> "11FC0001")
+    function makeExpectedQR(line, item, seq) {
+      const lineCode = line.replace("라인", "");
+      const itemCode = item.replace("/", "");
+      return `${lineCode}${itemCode}${pad4(seq)}`;
+    }
+
+    // 3. 효과음 생성 (Web Audio API - 별도 오디오 파일 불필요)
+    function playBeep(isSuccess) {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        if (isSuccess) {
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(880, ctx.currentTime); // 높은 맑은 음
+          gain.gain.setValueAtTime(0.25, ctx.currentTime);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.15);
+        } else {
+          osc.type = "sawtooth";
+          osc.frequency.setValueAtTime(220, ctx.currentTime); // 낮은 경고 부저음
+          gain.gain.setValueAtTime(0.35, ctx.currentTime);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.45);
+          if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        }
+      } catch (e) {}
+    }
+
+    // 4. 화면 전환 및 렌더링
+    function showScreen(screenId) {
+      document.querySelectorAll(".screen").forEach(el => el.classList.remove("active"));
+      document.getElementById(screenId).classList.add("active");
+
+      const btnComplete = document.getElementById("btn-complete");
+      if (screenId === "screen-scan") {
+        btnComplete.style.display = "block";
+      } else {
+        btnComplete.style.display = "none";
+      }
+    }
+
+    function renderHome() {
+      const grid = document.getElementById("line-grid");
+      grid.innerHTML = "";
+      LINES.forEach(line => {
+        const btn = document.createElement("button");
+        btn.className = "btn-card";
+        btn.innerHTML = `<span>${line}</span>`;
+        btn.onclick = () => selectLine(line);
+        grid.appendChild(btn);
+      });
+    }
+
+    function selectLine(line) {
+      currentLine = line;
+      document.getElementById("selected-line-label").innerText = `[${line}] 투입 품목을 선택하세요`;
+      renderItems();
+      showScreen("screen-item");
+    }
+
+    function renderItems() {
+      const grid = document.getElementById("item-grid");
+      grid.innerHTML = "";
+      ITEMS.forEach(item => {
+        const progress = getItemProgress(currentLine, item);
+        const btn = document.createElement("button");
+        let statusClass = "btn-card item-btn";
+        let badgeText = `대기 순번: ${pad4(progress.nextSeq)}`;
+
+        if (progress.nextSeq > MAX_SEQ) {
+          statusClass += " completed";
+          badgeText = "스캔 완료 (20/20)";
+        } else if (progress.nextSeq > 1) {
+          statusClass += " in-progress";
+          badgeText = `진행중: ${pad4(progress.nextSeq)} 차례`;
+        }
+
+        btn.className = statusClass;
+        btn.innerHTML = `
+          <span>${item}</span>
+          <span class="badge-seq">${badgeText}</span>
+        `;
+        btn.onclick = () => selectItem(item);
+        grid.appendChild(btn);
+      });
+    }
+
+    function selectItem(item) {
+      currentItem = item;
+      showScreen("screen-scan");
+      updateScanUI();
+      startScanner();
+    }
+
+    // 5. 스캔 UI 업데이트
+    function updateScanUI() {
+      const progress = getItemProgress(currentLine, currentItem);
+      document.getElementById("scan-title").innerText = `${currentLine} - ${currentItem}`;
+
+      if (progress.nextSeq > MAX_SEQ) {
+        document.getElementById("expected-qr").innerText = "전체 완료 (0020까지 완료)";
+        document.getElementById("current-seq-display").innerText = "완료";
+        setBanner("ok", "0020번까지 모든 스캔이 완료되었습니다. [스캔완료]를 눌러 초기화하세요.");
+      } else {
+        const expected = makeExpectedQR(currentLine, currentItem, progress.nextSeq);
+        document.getElementById("expected-qr").innerText = expected;
+        document.getElementById("current-seq-display").innerText = pad4(progress.nextSeq);
+      }
+
+      // 로그 렌더링
+      const logBox = document.getElementById("scan-log");
+      if (!progress.logs || progress.logs.length === 0) {
+        logBox.innerHTML = `<div style="color:#6b7280; text-align:center;">이전에 스캔한 이력이 없습니다. (0001부터 시작)</div>`;
+      } else {
+        logBox.innerHTML = progress.logs.slice().reverse().map(entry => `
+          <div class="history-item">
+            <span><strong>${entry.qr}</strong> (${entry.seq}번)</span>
+            <span style="color:#34d399;">${entry.time} 정상</span>
+          </div>
+        `).join("");
+      }
+    }
+
+    function setBanner(type, msg) {
+      const banner = document.getElementById("status-banner");
+      banner.className = "status-banner " + (type || "");
+      banner.innerText = msg;
+    }
+
+    // 6. 카메라 QR 스캐너 제어
+    async function startScanner() {
+      await stopScanner();
+      isScanLocked = false;
+
+      html5QrCode = new Html5Qrcode("reader");
+      const config = {
+        fps: 10,
+        qrbox: { width: 220, height: 220 },
+        aspectRatio: 1.333
+      };
+
+      try {
+        await html5QrCode.start(
+          { facingMode: "environment" }, // 후면 카메라 자동 실행
+          config,
+          (decodedText) => {
+            handleQrScanned(decodedText);
+          },
+          (errorMessage) => {
+            // 스캔 중 프레임 에러는 무시
+          }
+        );
+      } catch (err) {
+        setBanner("ng", "카메라 자동 실행 실패: HTTPS 환경 및 카메라 권한을 확인하세요.");
+      }
+    }
+
+    async function stopScanner() {
+      if (html5QrCode) {
+        try {
+          if (html5QrCode.isScanning) {
+            await html5QrCode.stop();
+          }
+          await html5QrCode.clear();
+        } catch (e) {}
+        html5QrCode = null;
+      }
+    }
+
+    // 7. QR 코드 판정 로직 (투입순번 및 이종 체크)
+    function handleQrScanned(rawText) {
+      if (isScanLocked) return;
+      const scanned = rawText.trim().toUpperCase();
+      if (!scanned) return;
+
+      const progress = getItemProgress(currentLine, currentItem);
+      if (progress.nextSeq > MAX_SEQ) {
+        playBeep(false);
+        setBanner("ng", "이미 0020번까지 완료되었습니다! [스캔완료] 버튼을 눌러주세요.");
+        lockScannerTemporarily(1800);
+        return;
+      }
+
+      const expected = makeExpectedQR(currentLine, currentItem, progress.nextSeq);
+      const expectedLineCode = currentLine.replace("라인", "");
+      const expectedItemCode = currentItem.replace("/", "");
+
+      // 1) 정상 일치하는 경우
+      if (scanned === expected) {
+        playBeep(true);
+        const now = new Date();
+        const timeStr = now.toTimeString().split(" ")[0];
+        const updatedLogs = progress.logs || [];
+        updatedLogs.push({
+          seq: pad4(progress.nextSeq),
+          qr: scanned,
+          time: timeStr
+        });
+
+        const nextSeq = progress.nextSeq + 1;
+        setItemProgress(currentLine, currentItem, nextSeq, updatedLogs);
+        updateScanUI();
+
+        if (nextSeq <= MAX_SEQ) {
+          setBanner("ok", `[정상] ${scanned} 확인! → 다음 ${pad4(nextSeq)}번 스캔 준비`);
+        }
+        // 연속 스캔 시 방금 찍힌 QR이 중복 인식되지 않도록 1.5초 딜레이 후 자동 다음 스캔 준비
+        lockScannerTemporarily(1500);
+        return;
+      }
+
+      // 2) 불일치 시 상세 원인 분석 (이종 vs 순번 오류)
+      playBeep(false);
+      if (scanned.length !== 8) {
+        setBanner("ng", `[규격 오류] 인식값(${scanned})이 8자리 파렛트 규격이 아닙니다!`);
+      } else {
+        const scannedLine = scanned.substring(0, 2);
+        const scannedItem = scanned.substring(2, 4);
+        const scannedSeq  = scanned.substring(4, 8);
+
+        if (scannedLine !== expectedLineCode) {
+          setBanner("ng", `[라인 이종 오류] 현재 ${expectedLineCode}라인입니다! (스캔됨: ${scannedLine}라인)`);
+        } else if (scannedItem !== expectedItemCode) {
+          setBanner("ng", `[품목 이종 오류] 현재 ${currentItem} 품목입니다! (스캔됨: ${scannedItem})`);
+        } else if (scannedSeq !== pad4(progress.nextSeq)) {
+          setBanner("ng", `[투입 순번 오류] ${pad4(progress.nextSeq)}번 차례입니다! (스캔됨: ${scannedSeq}번)`);
+        } else {
+          setBanner("ng", `[불일치 오류] 예상: ${expected} / 스캔: ${scanned}`);
+        }
+      }
+      lockScannerTemporarily(2000);
+    }
+
+    function lockScannerTemporarily(ms) {
+      isScanLocked = true;
+      setTimeout(() => {
+        isScanLocked = false;
+      }, ms);
+    }
+
+    // 수동 테스트 버튼
+    function triggerManualScan() {
+      const input = document.getElementById("manual-qr");
+      if (input.value) {
+        handleQrScanned(input.value);
+        input.value = "";
+      }
+    }
+
+    // 8. 하단 버튼 동작 (홈 화면 / 스캔완료)
+    async function goHome() {
+      await stopScanner();
+      currentLine = null;
+      currentItem = null;
+      renderHome();
+      showScreen("screen-home");
+    }
+
+    function completeAndReset() {
+      if (!currentLine || !currentItem) return;
+      const ok = confirm(`[${currentLine} - ${currentItem}] 스캔 이력을 초기화하고 0001번부터 다시 시작하시겠습니까?`);
+      if (ok) {
+        setItemProgress(currentLine, currentItem, 1, []);
+        setBanner("", "초기화 완료! 0001번 파렛트 QR을 스캔해 주세요.");
+        updateScanUI();
+      }
+    }
+
+    // 초기 실행
+    renderHome();
+  </script>
+</body>
+</html>
